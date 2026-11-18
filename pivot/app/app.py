@@ -1,15 +1,19 @@
 """
-CASTRA LEGIONIS — Frontier Watch Console
-=========================================
+CASTRA LEGIONIS — Statio Vigiliae Limitis (Frontier Watch Console)
+==================================================================
 Intentionally vulnerable web app for the "Ambiorix" BSides Limburg CTF.
 
-Attack surface (by design):
-  1. A shared "recruit" account whose credentials are leaked in an HTML comment
-     on the login page (view-source enumeration).
-  2. Once authenticated, the watch-report form renders the attacker-controlled
-     `sigil` field through render_template_string() -> Jinja2 SSTI -> RCE.
+ALL player-facing text is in Latin on purpose: reading the clues is part of
+the challenge. Credentials, hostnames and IPs are kept as literal ASCII tokens
+embedded in the Latin prose so nothing requires guessing.
 
-Everything in this file is deliberately insecure and scoped to the lab.
+Attack surface (by design):
+  1. A shared "recruit" (tiro) account whose credentials are leaked in an HTML
+     comment on the login page (view-source enumeration).
+  2. Once authenticated, the watch-report "signum" field is rendered through
+     render_template_string() -> Jinja2 SSTI -> RCE.
+
+Everything here is deliberately insecure and scoped to the lab.
 """
 from flask import Flask, request, redirect, session, render_template_string
 
@@ -23,18 +27,18 @@ RECRUIT_PASS = "AveLegioXIV-54"
 # In-memory board (resets on restart -> trivially stateless between solvers).
 REPORTS = [
     {"author": "praefectus", "sigil": "LEG-XIV",
-     "report": "Night watch quiet. Fires seen in the tree line to the north-east."},
+     "report": "Nox quieta. Ignes in silva ad septentrionem et orientem visi."},
     {"author": "optio", "sigil": "CORVVS",
-     "report": "Supply wagons from Aduatuca delayed again. Scouts uneasy."},
+     "report": "Plaustra commeatus ab Atuatuca iterum morantur. Exploratores solliciti sunt."},
 ]
 
 
 def page(title, body, logged_in=False, extra_head=""):
     """Plain string-templated layout. No Jinja here -> SSTI is isolated to `sigil`."""
-    nav = ('<a href="/board">Watch Board</a> &middot; <a href="/logout">Stand down</a>'
-           if logged_in else '<a href="/login">Report for duty</a>')
+    nav = ('<a href="/board">Tabula</a> &middot; <a href="/logout">Abi</a>'
+           if logged_in else '<a href="/login">Ad stationem</a>')
     return f"""<!doctype html>
-<html lang="en"><head><meta charset="utf-8">
+<html lang="la"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{title} &middot; Castra Legionis</title>{extra_head}
 <style>
@@ -65,11 +69,11 @@ def page(title, body, logged_in=False, extra_head=""):
 <body>
 <header>
   <h1>CASTRA LEGIONIS</h1>
-  <small>Frontier Watch Console &middot; Legio XIV &middot; Aduatuca sector</small>
+  <small>Statio Vigiliae Limitis &middot; Legio XIV &middot; Regio Atuatucae</small>
   <nav>{nav}</nav>
 </header>
 <main>{body}</main>
-<footer>Property of the Roman frontier command. Unauthorised access is forbidden by the Legate.</footer>
+<footer>Possessio imperii Romani ad limitem. Aditus non licitus a Legato vetatur.</footer>
 </body></html>"""
 
 
@@ -77,13 +81,13 @@ def page(title, body, logged_in=False, extra_head=""):
 def index():
     body = """
     <div class="panel">
-      <h2>Ave, legionary.</h2>
-      <p>This console logs the night-watch reports for the frontier camp. Only
-      enlisted men may file or read reports. If you have been posted to the watch,
-      report for duty and enter your watchword.</p>
-      <p><a href="/login" style="color:#c9a227">&raquo; Report for duty</a></p>
+      <h2>Ave, miles.</h2>
+      <p>Haec statio renuntiationes vigiliae nocturnae castrorum limitis servat.
+      Soli milites adscripti renuntiare aut legere possunt. Si ad vigiliam missus
+      es, ad stationem te confer et tesseram tuam da.</p>
+      <p><a href="/login" style="color:#c9a227">&raquo; Ad stationem te confer</a></p>
     </div>"""
-    return page("Watch Console", body)
+    return page("Statio Vigiliae", body)
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -95,23 +99,23 @@ def login():
         if u == RECRUIT_USER and p == RECRUIT_PASS:
             session["user"] = u
             return redirect("/board")
-        flash = '<p class="flash">Watchword rejected. The optio has been notified.</p>'
+        flash = '<p class="flash">Tessera reiecta. Optio certior factus est.</p>'
     # VULN: leaked credentials in an HTML comment (view-source enumeration).
-    leak = ("\n    <!-- TODO(centurion): disable the shared recruit login before "
-            "we go live. creds still: tiro / AveLegioXIV-54 -->\n")
+    leak = ("\n    <!-- mandatum centurionis: tesseram communem recrutorum dele "
+            "antequam in proelium imus. etiamnunc valet: tiro / AveLegioXIV-54 -->\n")
     body = f"""{leak}
     <div class="panel">
-      <h2>Report for duty</h2>
+      <h2>Ad stationem te confer</h2>
       {flash}
       <form method="post">
-        <label>Name</label>
-        <input name="username" autocomplete="off" placeholder="e.g. tiro">
-        <label>Watchword</label>
+        <label>Nomen</label>
+        <input name="username" autocomplete="off" placeholder="velut tiro">
+        <label>Tessera</label>
         <input name="password" type="password" autocomplete="off">
-        <button type="submit">Enter the camp</button>
+        <button type="submit">Castra intra</button>
       </form>
     </div>"""
-    return page("Report for duty", body)
+    return page("Ad stationem", body)
 
 
 @app.route("/logout")
@@ -127,7 +131,7 @@ def board():
 
     filed = ""
     if request.method == "POST":
-        author = request.form.get("author", "anon").strip() or "anon"
+        author = request.form.get("author", "ignotus").strip() or "ignotus"
         report = request.form.get("report", "").strip()
         sigil = request.form.get("sigil", "").strip()
 
@@ -136,47 +140,47 @@ def board():
 
         # Light discipline filter (flavour + stops the low-effort config dump).
         if "config" in sigil.lower():
-            rendered = "[the centurion forbids that word upon a sigil]"
+            rendered = "[centurio hoc verbum in signo vetat]"
         else:
             # VULN: attacker-controlled `sigil` passed to render_template_string
             #       -> Server-Side Template Injection -> RCE.
             try:
                 rendered = render_template_string(sigil)
             except Exception as e:  # keep the service up no matter what players throw
-                rendered = f"[sigil could not be struck: {type(e).__name__}]"
+                rendered = f"[signum imprimi non potuit: {type(e).__name__}]"
 
         filed = f"""
         <div class="panel">
-          <h2>Report filed under your sigil</h2>
-          <p>The quartermaster strikes your sigil into the wax tablet:</p>
+          <h2>Renuntiatio sub signo tuo relata</h2>
+          <p>Quaestor signum tuum in tabula cerata imprimit:</p>
           <pre class="sigil">{rendered}</pre>
         </div>"""
 
-    # NOTE: report bodies are rendered safely (escaped via !r-ish manual escape).
+    # NOTE: report bodies are rendered safely (manually escaped).
     rows = ""
     for r in REPORTS:
         safe = (r["report"].replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"))
         who = (r["author"].replace("<", "&lt;").replace(">", "&gt;"))
         sig = (r["sigil"].replace("<", "&lt;").replace(">", "&gt;"))
         rows += (f'<div class="report"><div class="meta">{who} &middot; '
-                 f'sigil {sig}</div>{safe}</div>')
+                 f'signum {sig}</div>{safe}</div>')
 
     form = """
     <div class="panel">
-      <h2>File a watch report</h2>
+      <h2>Renuntiationem vigiliae defer</h2>
       <form method="post">
-        <label>Your name</label>
+        <label>Nomen tuum</label>
         <input name="author" autocomplete="off">
-        <label>Report</label>
+        <label>Renuntiatio</label>
         <textarea name="report" rows="3"></textarea>
-        <label>Sigil (stamped onto the tablet)</label>
-        <input name="sigil" autocomplete="off" placeholder="e.g. LEG-XIV">
-        <button type="submit">File report</button>
+        <label>Signum (in tabula imprimendum)</label>
+        <input name="sigil" autocomplete="off" placeholder="velut LEG-XIV">
+        <button type="submit">Renuntiationem defer</button>
       </form>
     </div>"""
 
-    body = filed + form + f'<div class="panel"><h2>Watch board</h2>{rows}</div>'
-    return page("Watch Board", body, logged_in=True)
+    body = filed + form + f'<div class="panel"><h2>Tabula vigiliarum</h2>{rows}</div>'
+    return page("Tabula Vigiliarum", body, logged_in=True)
 
 
 @app.route("/healthz")

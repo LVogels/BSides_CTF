@@ -33,10 +33,14 @@ RUN chown scout:scout /home/scout/muster.txt && chmod 0600 /home/scout/muster.tx
 RUN printf 'ip a\nip r\nssh eburo@10.10.10.10\ncat ~/muster.txt\n' > /home/scout/.bash_history \
  && chown scout:scout /home/scout/.bash_history && chmod 0600 /home/scout/.bash_history
 
+# ---- Latin login banner ----
+COPY motd /etc/motd
+
 # ---- sshd config: password auth on, no root login ----
 RUN mkdir -p /run/sshd \
  && sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config \
- && sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
+ && sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config \
+ && sed -i 's/^#\?PrintMotd.*/PrintMotd yes/' /etc/ssh/sshd_config
 
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

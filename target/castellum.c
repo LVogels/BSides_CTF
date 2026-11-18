@@ -17,10 +17,10 @@ int main(void) {
     setuid(0);
     setgid(0);
 
-    puts("[castellum] verifying the watch rotation...");
+    puts("[castellum] vices vigiliae probantur...");
 
     /* VULN: relative command name + inherited PATH = PATH hijack privesc. */
-    system("date +\"[castellum] roll-call confirmed at %H:%M:%S\"");
+    system("date +\"[castellum] recensio confirmata hora %H:%M:%S\"");
 
     return 0;
 }

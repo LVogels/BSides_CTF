@@ -1,11 +1,11 @@
-=== CASTRA LEGIONIS — deployment notes (centurion's eyes only) ===
+=== CASTRA LEGIONIS — commentarii de dispositione (soli centurioni) ===
 
-  web console ........ http://castra/        (service runs as www-data)
-  maintenance SSH .... scout / FrontierWatch-54BC   (this box only)
+  statio interretialis .. http://castra/    (ministerium ut www-data currit)
+  aditus per SSH ........ scout / FrontierWatch-54BC    (haec machina tantum)
 
-  inner camp ......... arduenna   10.10.10.10
-                       The war-camp is NOT routable from the frontier.
-                       Reach it ONLY by hopping through this box.
+  castra interiora ...... arduenna   10.10.10.10
+                          Bellica castra ex limite adiri NON possunt.
+                          Pervenitur SOLUM transiliendo per hanc machinam.
 
-  reminder: scout keeps the inner-camp muster roll in his home directory.
-            Do not copy it onto the web tree again.
+  memento: scout tabulam militum castrorum interiorum in domo sua servat.
+           Noli eam iterum in arborem interretialem transcribere.

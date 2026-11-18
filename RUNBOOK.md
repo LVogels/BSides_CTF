@@ -5,18 +5,60 @@ at the con.
 
 ## Deploy
 
+Default deploy (recommended for a public CTF — **Model A**): only the pivot and
+target run; the pivot's web + SSH are published; players attack from their own
+machines.
+
 ```bash
 docker compose up -d --build
-docker compose ps          # all three should be "Up" (pivot/target: healthy)
+docker compose ps          # castra + arduenna should be "Up" / healthy
 ```
 
-- **No host ports are published.** Players enter via the attacker container:
+Published on the host:
+
+| Host | → container | What |
+|---|---|---|
+| `:8080` | `castra:80` | the web console (foothold surface) |
+| `:2022` | `castra:22` | pivot SSH (for the `ssh -D` dynamic forward) |
+
+The target (`arduenna`) is **never** published — it's reachable only by
+tunnelling through the pivot. Because each player's `ssh -D` SOCKS proxy binds on
+*their own* machine, many players can play the shared lab at once without
+colliding on `:1080`.
+
+### Optional in-lab attacker box
+
+For players without their own tooling (and to run `test/solve.sh`), start the
+ready-made frontier box behind the `attacker` profile:
+
+```bash
+docker compose --profile attacker up -d --build
+ssh scout@<lab-host> -p 2222        # password: ambiorix  (host :2222 -> attacker :22)
+```
+
+The `scout` player account there has passwordless `sudo` (its own box, so raw
+`nmap` scans work). Fallback: `docker compose exec attacker bash`.
+
+### Concurrency & scaling
+
+- **Model A (default):** one shared lab, players bring their own box. Nothing to
+  scale — this is the normal CTF model. The flag is static, so everyone submits
+  the same string.
+- **Per-team isolation:** run one stack per team with a distinct project name and
+  host-port offsets, e.g.
   ```bash
-  docker compose exec attacker bash
+  docker compose -p team07 up -d          # edit the ports: lines per stack
   ```
-  This keeps the frontier model clean and means the host itself is never part of
-  the attack surface. (If you prefer to hand out shells differently — e.g. one
-  attacker container per team, or SSH into it — scale/adjust as needed.)
+  Note: the subnets (`172.20.0.0/24`, `10.10.10.0/24`) are currently fixed, so
+  two stacks can't share a host without parametrising them. For many isolated
+  stacks, ask the author for the hostname-based variant + a launcher script.
+- **Scaling to head-count** is an orchestration concern (event infra), not
+  something compose does by itself.
+
+> **Language:** all in-environment player-facing text (web console, login banners,
+> deploy notes, muster roll, the SUID tool's output, the attacker brief) is in
+> **Latin** by design — an extra translation layer. See `WALKTHROUGH.md` for a
+> full Latin→English glossary of every clue. Credentials/IPs are literal ASCII.
 
 ## Reset between solvers
 
@@ -41,26 +83,32 @@ Compose defines container healthchecks:
 - **castra (pivot):** `curl -fsS http://127.0.0.1/healthz` (the web console).
 - **arduenna (target):** `pidof sshd`.
 
-Manual checks:
+Manual checks (from the host, using the published ports):
 
 ```bash
 # web console alive?
-docker compose exec attacker curl -fsS http://172.20.0.10/healthz      # -> ok
+curl -fsS http://127.0.0.1:8080/healthz                 # -> ok
 
-# isolation invariant still holds? (this MUST fail / time out)
-docker compose exec attacker ping -c1 -W2 10.10.10.10 ; echo "exit=$?"
+# pivot SSH reachable?
+nc -z 127.0.0.1 2022 && echo "pivot ssh open"
 
-# full end-to-end solvability:
+# full end-to-end solvability (needs the attacker profile):
+docker compose --profile attacker up -d --build
 ./test/solve.sh            # -> "==== PASS ====" and the flag
 ```
 
-> `test/solve.sh` defaults to `docker compose`. On a podman host:
-> `COMPOSE="podman-compose" ./test/solve.sh`.
+`solve.sh` also re-checks the **isolation invariant** (attacker must NOT reach
+`10.10.10.10` directly) as its first stage.
+
+> `test/solve.sh` runs its steps inside the attacker container, so bring that
+> profile up first. It defaults to `docker compose`; on a podman host use
+> `COMPOSE="podman-compose --profile attacker" ./test/solve.sh`.
 
 ## Credentials (private — organiser reference)
 
 | Where | User | Secret | How the player gets it |
 |---|---|---|---|
+| attacker box (SSH `:2222`) | `scout` | `ambiorix` | handed out to players (their own box) |
 | web console (`castra`) | `tiro` | `AveLegioXIV-54` | HTML comment on `/login` |
 | SSH (`castra`) | `scout` | `FrontierWatch-54BC` | SSTI RCE → `/opt/castra/DEPLOY_NOTES.txt` |
 | SSH (`arduenna`) | `eburo` | `ArduennaShadow` | `~scout/muster.txt` (after SSH) |
@@ -70,11 +118,12 @@ Flag: **`flag{atuatuca_ambush_54bc}`** at `/root/flag.txt` on `arduenna`.
 
 ## Resource use
 
-- 3 small containers. Base images: `python:3.11-slim`, `debian:bookworm-slim`.
-- Idle footprint is light: roughly **~250–400 MB RAM** total and negligible CPU
-  (gunicorn with 2 workers + two `sshd`s). Comfortable for many concurrent
-  teams on one host; scale horizontally (one stack per team) if you expect heavy
-  parallel load or want per-team isolation.
+- 2 containers by default (castra + arduenna), or 3 with the attacker profile.
+  Base images: `python:3.11-slim`, `debian:bookworm-slim`.
+- Idle footprint is light: roughly **~200–400 MB RAM** total and negligible CPU
+  (gunicorn with 2 workers + the `sshd`s). One shared lab (Model A) comfortably
+  serves many players at once; run one stack per team only if you want hard
+  per-team isolation.
 - Disk: a few hundred MB of images after build.
 
 ## Troubleshooting
@@ -82,8 +131,9 @@ Flag: **`flag{atuatuca_ambush_54bc}`** at `/root/flag.txt` on `arduenna`.
 - **Player can reach `10.10.10.10` directly** → the `internal: true` flag on the
   `internal` network is missing/overridden. Re-check `docker-compose.yml` and
   rebuild. The isolation check above must fail.
-- **SSH `-D` tunnel refused** → a previous tunnel is still bound to `:1080`
-  inside the attacker container; `pkill -f 'ssh.*-D 1080'` or
-  `docker compose restart attacker`.
+- **SSH `-D` tunnel refused on the in-lab attacker box** → a previous tunnel is
+  still bound to `:1080`; `pkill -f 'ssh.*-D 1080'` or
+  `docker compose restart attacker`. (Players on their own machines never hit
+  this — their tunnel binds locally.)
 - **Web console 502/down** → `docker compose restart pivot`; healthcheck will go
   green within ~30 s.

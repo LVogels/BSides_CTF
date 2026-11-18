@@ -24,10 +24,14 @@ RUN gcc -o /usr/local/bin/castellum /usr/local/src/castellum.c \
  && chmod 0644 /usr/local/src/castellum.c
 # gcc stays installed so players can (optionally) compile; harmless in the lab.
 
+# ---- Latin login banner ----
+COPY motd /etc/motd
+
 # ---- sshd config ----
 RUN mkdir -p /run/sshd \
  && sed -i 's/^#\?PermitRootLogin.*/PermitRootLogin no/' /etc/ssh/sshd_config \
- && sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config
+ && sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config \
+ && sed -i 's/^#\?PrintMotd.*/PrintMotd yes/' /etc/ssh/sshd_config
 
 EXPOSE 22
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \

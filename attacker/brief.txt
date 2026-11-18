@@ -1,17 +1,16 @@
 
 ========================================================================
-  AMBIORIX — scout's brief
+  AMBIORIX — mandata exploratori
 ========================================================================
-  You are a scout on the frontier ("guest") network: 172.20.0.0/24
-  You are 172.20.0.5.
+  Explorator es in rete limitis ("hospitum"): 172.20.0.0/24
+  Tu es 172.20.0.5.
 
-  The Roman frontier camp has ONE box you can see from here:
-      castra   172.20.0.10   (a web console on port 80)
+  Castra limitis Romana UNAM machinam habent quam hinc videre potes:
+      castra   172.20.0.10   (statio interretialis in portu 80)
 
-  Somewhere beyond it lies the Eburones' hidden war-camp. You cannot
-  reach it directly from the frontier. Breach the camp, find the way
-  through, and take the flag.
+  Ultra eam latet castra occulta Eburonum. Eo recta ex limite pervenire
+  non potes. Castra perrumpe, viam per ea inveni, et signum cape.
 
-  Tools ready: nmap, curl, ssh, proxychains4 (pre-set for socks5 :1080).
-  Flag format: flag{...}
+  Instrumenta parata: nmap, curl, ssh, proxychains4 (socks5 :1080 parata).
+  Forma signi: flag{...}
 ========================================================================

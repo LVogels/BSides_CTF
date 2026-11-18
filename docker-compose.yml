@@ -6,6 +6,18 @@
 #
 #  attacker ─ guest ─ pivot(castra) ─ internal ─ target(arduenna)
 #  The player MUST tunnel through `castra` to reach `arduenna`.
+#
+#  DEPLOY MODEL A (default): the pivot's web + SSH are published to the host, so
+#  players attack from THEIR OWN machine (Kali, etc.). Nothing to scale — the
+#  SSH -D tunnel binds on the player's own box, so no :1080 collisions.
+#    docker compose up -d --build
+#      -> http://<host>:8080   (web console)
+#      -> ssh scout@<host> -p 2022   (pivot, after you find the creds)
+#
+#  OPTIONAL in-lab attacker box (profile "attacker"): a ready-made frontier box
+#  with tools pre-installed, for players without their own kit (and for solve.sh):
+#    docker compose --profile attacker up -d --build
+#      -> ssh scout@<host> -p 2222   (password: ambiorix)
 # ============================================================================
 services:
 
@@ -13,9 +25,12 @@ services:
     build: ./attacker
     container_name: ambiorix-attacker
     hostname: scout-box
+    profiles: ["attacker"]              # only starts with:  --profile attacker
     networks:
       guest:
         ipv4_address: 172.20.0.5
+    ports:
+      - "2222:22"                       # optional box:  ssh scout@<host> -p 2222
     cap_add: ["NET_RAW", "NET_ADMIN"]   # let nmap do SYN/other scans
     restart: unless-stopped
 
@@ -28,6 +43,9 @@ services:
         ipv4_address: 172.20.0.10
       internal:
         ipv4_address: 10.10.10.5
+    ports:
+      - "8080:80"                       # web console (the foothold surface)
+      - "2022:22"                       # pivot SSH (for the SSH -D dynamic forward)
     restart: unless-stopped
 
   target:
