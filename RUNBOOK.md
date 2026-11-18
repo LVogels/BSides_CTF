@@ -137,3 +137,42 @@ Flag: **`flag{atuatuca_ambush_54bc}`** at `/root/flag.txt` on `arduenna`.
   this — their tunnel binds locally.)
 - **Web console 502/down** → `docker compose restart pivot`; healthcheck will go
   green within ~30 s.
+
+## Topology (private — organiser reference)
+
+`README.md` is the player handout. It gives the same information as the
+scout box's `/etc/ambiorix-brief.txt` (castra's address and web console, and
+that a hidden camp lies beyond it), and nothing about the inner network. For
+organisers:
+
+```
+          guest (frontier) 172.20.0.0/24            internal (war-camp) 10.10.10.0/24
+                                                     internal: true  (no outside route)
+ ┌────────────┐        ┌──────────────────┐         ┌──────────────────┐
+ │ player box │────────│   castra (pivot) │─────────│ arduenna (target)│
+ │ (or opt.   │        │ .10  /  10.10.10.5│         │   10.10.10.10    │
+ │  attacker) │        │  :8080 web :2022 ssh        │   flag lives here│
+ └────────────┘        └──────────────────┘         └──────────────────┘
+```
+
+Published on the lab host: `:8080` (castra web console), `:2022` (castra SSH),
+and `:2222` (optional attacker box, `--profile attacker` only).
+
+## Repository files
+
+| Path | What it is |
+|---|---|
+| `README.md` | **player-facing** brief — safe to distribute |
+| `docker-compose.yml` | one-command deploy of the whole lab |
+| `attacker/` | optional ready-made frontier box (tools + brief); `--profile attacker` |
+| `pivot/` | `castra` — vulnerable web console + SSH (dual-homed) |
+| `target/` | `arduenna` — the inner box with the flag |
+| `WALKTHROUGH.md` | **private** — full intended solution |
+| `RUNBOOK.md` | **private** — this file |
+| `flag.txt` | **private** — the flag + format |
+| `test/solve.sh` | automated golden-path check |
+
+## Suggested scoring
+
+Single flag, **medium** → suggested **300 pts** (or per your event's curve).
+Category for the scoreboard: Web / Network Pivoting / Linux privesc.
