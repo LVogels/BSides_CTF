@@ -1,0 +1,3 @@
+# nothing runtime to track; keep the repo to source + docs
+*.pyc
+__pycache__/

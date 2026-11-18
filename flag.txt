@@ -1,0 +1,9 @@
+# PRIVATE — do not distribute to players.
+#
+# Challenge : Ambiorix (BSides Limburg)
+# Format    : flag{...}
+# Points    : 300 (suggested, medium)
+#
+# Final flag (on arduenna:/root/flag.txt):
+
+flag{atuatuca_ambush_54bc}

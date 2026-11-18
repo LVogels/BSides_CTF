@@ -1,0 +1,17 @@
+
+========================================================================
+  AMBIORIX — scout's brief
+========================================================================
+  You are a scout on the frontier ("guest") network: 172.20.0.0/24
+  You are 172.20.0.5.
+
+  The Roman frontier camp has ONE box you can see from here:
+      castra   172.20.0.10   (a web console on port 80)
+
+  Somewhere beyond it lies the Eburones' hidden war-camp. You cannot
+  reach it directly from the frontier. Breach the camp, find the way
+  through, and take the flag.
+
+  Tools ready: nmap, curl, ssh, proxychains4 (pre-set for socks5 :1080).
+  Flag format: flag{...}
+========================================================================

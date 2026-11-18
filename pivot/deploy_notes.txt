@@ -1,0 +1,11 @@
+=== CASTRA LEGIONIS — deployment notes (centurion's eyes only) ===
+
+  web console ........ http://castra/        (service runs as www-data)
+  maintenance SSH .... scout / FrontierWatch-54BC   (this box only)
+
+  inner camp ......... arduenna   10.10.10.10
+                       The war-camp is NOT routable from the frontier.
+                       Reach it ONLY by hopping through this box.
+
+  reminder: scout keeps the inner-camp muster roll in his home directory.
+            Do not copy it onto the web tree again.

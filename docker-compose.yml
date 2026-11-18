@@ -1,0 +1,53 @@
+# ============================================================================
+#  AMBIORIX — multi-stage network-pivoting CTF  (BSides Limburg)
+#
+#  guest    172.20.0.0/24   player entry ("Roman frontier")
+#  internal 10.10.10.0/24   internal: true -> no external route ("hidden camp")
+#
+#  attacker ─ guest ─ pivot(castra) ─ internal ─ target(arduenna)
+#  The player MUST tunnel through `castra` to reach `arduenna`.
+# ============================================================================
+services:
+
+  attacker:
+    build: ./attacker
+    container_name: ambiorix-attacker
+    hostname: scout-box
+    networks:
+      guest:
+        ipv4_address: 172.20.0.5
+    cap_add: ["NET_RAW", "NET_ADMIN"]   # let nmap do SYN/other scans
+    restart: unless-stopped
+
+  pivot:
+    build: ./pivot
+    container_name: ambiorix-castra
+    hostname: castra
+    networks:
+      guest:
+        ipv4_address: 172.20.0.10
+      internal:
+        ipv4_address: 10.10.10.5
+    restart: unless-stopped
+
+  target:
+    build: ./target
+    container_name: ambiorix-arduenna
+    hostname: arduenna
+    networks:
+      internal:
+        ipv4_address: 10.10.10.10
+    restart: unless-stopped
+
+networks:
+  guest:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24
+  internal:
+    driver: bridge
+    internal: true          # no route to the outside world
+    ipam:
+      config:
+        - subnet: 10.10.10.0/24

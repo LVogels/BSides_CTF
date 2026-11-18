@@ -1,0 +1,8 @@
+Muster roll — inner war-camp (arduenna, 10.10.10.10)
+----------------------------------------------------
+  camp login ....... eburo / ArduennaShadow
+
+  note from the quartermaster:
+    I left a root-owned roll-call tool in /usr/local/bin on the camp box.
+    Handy for the watch rotation. Source is in /usr/local/src if you want
+    to see what it does.
