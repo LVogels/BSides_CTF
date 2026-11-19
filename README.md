@@ -25,27 +25,28 @@ challenge. No Latin degree required; a dictionary and some nerve are enough.
 ## Getting started
 
 The organisers will give you a **lab host address**. The Roman frontier camp
-has exactly one machine you can see from where you stand:
+has exactly one machine you can see from where you stand — **castra**, its web
+console:
 
-| Where you play from | castra's web console |
-|---|---|
-| your own machine | `http://<lab-host>:8080` |
-| the scout box (below) | `http://172.20.0.10` (port 80) — you are `172.20.0.5` on the frontier net `172.20.0.0/24` |
+```
+http://<lab-host>:8080      # the web console (your foothold surface)
+ssh scout@<lab-host> -p 2022   # castra's maintenance SSH — once you find the creds
+```
 
 Beyond castra lies the Eburones' hidden camp. You **cannot** reach it directly
-from the frontier — find a way through.
+from the frontier — find a way through castra.
 
-**Bring your own machine** (Kali or similar) with the usual tools: `nmap`,
-`curl`, `ssh`, `proxychains4`.
-
-**No kit with you?** Ask the organisers for the ready-made scout box. It has
-`nmap`, `curl`, `ssh` and `proxychains4` (pre-configured for a SOCKS5 proxy on
-`127.0.0.1:1080`) installed:
+**You play from your own machine.** No in-lab box is handed out: everything you
+need runs on your own laptop (Kali or similar). Make sure you have the usual
+tools installed:
 
 ```bash
-ssh scout@<lab-host> -p 2222        # password: ambiorix
-cat /etc/ambiorix-brief.txt         # your orders, once logged in
+# Debian/Kali:  sudo apt install -y nmap curl openssh-client proxychains4
+# Fedora:       sudo dnf install -y nmap curl openssh-clients proxychains-ng
 ```
+
+You'll use `curl` for the web stage, `ssh` to pivot, and `proxychains4` (or any
+equivalent SOCKS client) to reach the hidden camp through the tunnel you open.
 
 ## Rules of engagement
 

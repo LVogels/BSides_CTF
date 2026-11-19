@@ -5,9 +5,8 @@ at the con.
 
 ## Deploy
 
-Default deploy (recommended for a public CTF — **Model A**): only the pivot and
-target run; the pivot's web + SSH are published; players attack from their own
-machines.
+Only the pivot and target run; the pivot's web + SSH are published; **players
+attack from their own machines**. There is no in-lab attacker box.
 
 ```bash
 docker compose up -d --build
@@ -26,22 +25,12 @@ tunnelling through the pivot. Because each player's `ssh -D` SOCKS proxy binds o
 *their own* machine, many players can play the shared lab at once without
 colliding on `:1080`.
 
-### Optional in-lab attacker box
-
-For players without their own tooling (and to run `test/solve.sh`), start the
-ready-made frontier box behind the `attacker` profile:
-
-```bash
-docker compose --profile attacker up -d --build
-ssh scout@<lab-host> -p 2222        # password: ambiorix  (host :2222 -> attacker :22)
-```
-
-The `scout` player account there has passwordless `sudo` (its own box, so raw
-`nmap` scans work). Fallback: `docker compose exec attacker bash`.
+Players need the usual tools on their own machine (`nmap`, `curl`,
+`openssh-client`, `proxychains4`); the README lists the install one-liners.
 
 ### Concurrency & scaling
 
-- **Model A (default):** one shared lab, players bring their own box. Nothing to
+- **Default:** one shared lab, players bring their own box. Nothing to
   scale — this is the normal CTF model. The flag is static, so everyone submits
   the same string.
 - **Per-team isolation:** run one stack per team with a distinct project name and
@@ -56,7 +45,7 @@ The `scout` player account there has passwordless `sudo` (its own box, so raw
   something compose does by itself.
 
 > **Language:** all in-environment player-facing text (web console, login banners,
-> deploy notes, muster roll, the SUID tool's output, the attacker brief) is in
+> deploy notes, muster roll, the SUID tool's output) is in
 > **Latin** by design — an extra translation layer. See `WALKTHROUGH.md` for a
 > full Latin→English glossary of every clue. Credentials/IPs are literal ASCII.
 
@@ -92,23 +81,23 @@ curl -fsS http://127.0.0.1:8080/healthz                 # -> ok
 # pivot SSH reachable?
 nc -z 127.0.0.1 2022 && echo "pivot ssh open"
 
-# full end-to-end solvability (needs the attacker profile):
-docker compose --profile attacker up -d --build
+# full end-to-end solvability (golden path):
+docker compose up -d --build
 ./test/solve.sh            # -> "==== PASS ====" and the flag
 ```
 
-`solve.sh` also re-checks the **isolation invariant** (attacker must NOT reach
-`10.10.10.10` directly) as its first stage.
+`solve.sh` also re-checks the **isolation invariant** (the target must NOT be
+reachable directly from the host) as its first stage.
 
-> `test/solve.sh` runs its steps inside the attacker container, so bring that
-> profile up first. It defaults to `docker compose`; on a podman host use
-> `COMPOSE="podman-compose --profile attacker" ./test/solve.sh`.
+> `test/solve.sh` runs on the **host** against the published ports — exactly as a
+> player would. It needs `curl`, `ssh`, `ncat` and `setsid` on the host (no
+> `sshpass` or `proxychains` required). Override `WEB` / `SSH_PORT` if you
+> published the pivot on non-default ports.
 
 ## Credentials (private — organiser reference)
 
 | Where | User | Secret | How the player gets it |
 |---|---|---|---|
-| attacker box (SSH `:2222`) | `scout` | `ambiorix` | handed out to players (their own box) |
 | web console (`castra`) | `tiro` | `AveLegioXIV-54` | HTML comment on `/login` |
 | SSH (`castra`) | `scout` | `FrontierWatch-54BC` | SSTI RCE → `/opt/castra/DEPLOY_NOTES.txt` |
 | SSH (`arduenna`) | `eburo` | `ArduennaShadow` | `~scout/muster.txt` (after SSH) |
@@ -118,7 +107,7 @@ Flag: **`flag{atuatuca_ambush_54bc}`** at `/root/flag.txt` on `arduenna`.
 
 ## Resource use
 
-- 2 containers by default (castra + arduenna), or 3 with the attacker profile.
+- 2 containers (castra + arduenna).
   Base images: `python:3.11-slim`, `debian:bookworm-slim`.
 - Idle footprint is light: roughly **~200–400 MB RAM** total and negligible CPU
   (gunicorn with 2 workers + the `sshd`s). One shared lab (Model A) comfortably
@@ -131,32 +120,30 @@ Flag: **`flag{atuatuca_ambush_54bc}`** at `/root/flag.txt` on `arduenna`.
 - **Player can reach `10.10.10.10` directly** → the `internal: true` flag on the
   `internal` network is missing/overridden. Re-check `docker-compose.yml` and
   rebuild. The isolation check above must fail.
-- **SSH `-D` tunnel refused on the in-lab attacker box** → a previous tunnel is
-  still bound to `:1080`; `pkill -f 'ssh.*-D 1080'` or
-  `docker compose restart attacker`. (Players on their own machines never hit
-  this — their tunnel binds locally.)
+- **SSH `-D` tunnel refused (`:1080` in use)** → a previous tunnel is still bound
+  locally on the player's machine; `pkill -f 'ssh.*-D 1080'` and reopen it. (This
+  is purely local to each player — it never affects the shared lab.)
 - **Web console 502/down** → `docker compose restart pivot`; healthcheck will go
   green within ~30 s.
 
 ## Topology (private — organiser reference)
 
-`README.md` is the player handout. It gives the same information as the
-scout box's `/etc/ambiorix-brief.txt` (castra's address and web console, and
-that a hidden camp lies beyond it), and nothing about the inner network. For
-organisers:
+`README.md` is the player handout. It gives players only castra's address and
+web console and that a hidden camp lies beyond it — nothing about the inner
+network. For organisers:
 
 ```
-          guest (frontier) 172.20.0.0/24            internal (war-camp) 10.10.10.0/24
+          frontier 172.20.0.0/24                    internal (war-camp) 10.10.10.0/24
                                                      internal: true  (no outside route)
  ┌────────────┐        ┌──────────────────┐         ┌──────────────────┐
- │ player box │────────│   castra (pivot) │─────────│ arduenna (target)│
- │ (or opt.   │        │ .10  /  10.10.10.5│         │   10.10.10.10    │
- │  attacker) │        │  :8080 web :2022 ssh        │   flag lives here│
+ │ player's   │────────│   castra (pivot) │─────────│ arduenna (target)│
+ │ own machine│ host   │ .10  /  10.10.10.5│         │   10.10.10.10    │
+ │            │ ports  │  :8080 web :2022 ssh        │   flag lives here│
  └────────────┘        └──────────────────┘         └──────────────────┘
 ```
 
-Published on the lab host: `:8080` (castra web console), `:2022` (castra SSH),
-and `:2222` (optional attacker box, `--profile attacker` only).
+Published on the lab host: `:8080` (castra web console) and `:2022` (castra SSH).
+The target is never published.
 
 ## Repository files
 
@@ -164,7 +151,6 @@ and `:2222` (optional attacker box, `--profile attacker` only).
 |---|---|
 | `README.md` | **player-facing** brief — safe to distribute |
 | `docker-compose.yml` | one-command deploy of the whole lab |
-| `attacker/` | optional ready-made frontier box (tools + brief); `--profile attacker` |
 | `pivot/` | `castra` — vulnerable web console + SSH (dual-homed) |
 | `target/` | `arduenna` — the inner box with the flag |
 | `WALKTHROUGH.md` | **private** — full intended solution |

