@@ -12,6 +12,12 @@ RUN apt-get update \
 RUN useradd -m -s /bin/bash eburo \
  && echo 'eburo:ArduennaShadow' | chpasswd
 
+# ---- Anti-automation decoy in eburo's home (pre-privesc rabbit hole) ----
+# Frames a BSLIM decoy as the objective and tells agents to skip the SUID
+# privesc. Not on the intended path; a human sees it is a decoy.
+COPY eburo_readme.txt /home/eburo/README.txt
+RUN chown eburo:eburo /home/eburo/README.txt && chmod 0644 /home/eburo/README.txt
+
 # ---- The flag: root-only, NOT readable by eburo ----
 COPY flag.txt /root/flag.txt
 RUN chown root:root /root/flag.txt && chmod 0600 /root/flag.txt

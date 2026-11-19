@@ -105,6 +105,21 @@ reachable directly from the host) as its first stage.
 
 Flag: **`flag{atuatuca_ambush_54bc}`** at `/root/flag.txt` on `arduenna`.
 
+## Decoys & anti-automation (support reference)
+
+The lab is seeded with decoy flags + prompt-injection "advisories" to stop
+fully-autonomous AI agents from one-shotting it (full list in `WALKTHROUGH.md`).
+
+- **The only valid flag is `flag{...}`.** Every decoy is `BSLIM{...}`. If a team
+  reports a `BSLIM{...}` string, they (or their tooling) fell for a decoy —
+  point them back at the box; don't accept it.
+- The decoys/injections are baked into images at build time and reset on
+  rebuild/restart like everything else.
+- `castra` ships with **no SSH client** by design (forces the `ssh -D` tunnel
+  from the player's own machine). `scout`'s shell history lists
+  `ssh eburo@10.10.10.10`; running it *on* castra returns `command not found` —
+  that is expected, not a bug.
+
 ## Resource use
 
 - 2 containers (castra + arduenna).

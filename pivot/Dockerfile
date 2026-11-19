@@ -42,6 +42,20 @@ RUN mkdir -p /run/sshd \
  && sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication yes/' /etc/ssh/sshd_config \
  && sed -i 's/^#\?PrintMotd.*/PrintMotd yes/' /etc/ssh/sshd_config
 
+# ---- Force the INTENDED pivot: no outbound SSH client on this box ----
+# The intended pivot is an `ssh -D` dynamic forward opened from the PLAYER's own
+# machine through castra's sshd — it needs no ssh client here. Removing the
+# client binaries kills the unintended "drive ssh onward from inside the web
+# RCE (with a pty helper)" shortcut, so players must tunnel properly.
+RUN rm -f /usr/bin/ssh /usr/bin/scp /usr/bin/sftp \
+           /usr/bin/ssh-agent /usr/bin/ssh-add /usr/bin/ssh-keyscan
+
+# ---- Honeypot for autonomous agents enumerating /opt/castra via the RCE ----
+# A plausible "scope notice" that frames a BSLIM decoy as the answer and tells
+# an agent to stop before the pivot. Not on the intended path.
+COPY scope_notice.txt /opt/castra/SCOPE_NOTICE.txt
+RUN chmod 0644 /opt/castra/SCOPE_NOTICE.txt
+
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
